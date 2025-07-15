@@ -18,4 +18,5 @@ $ echo -n -e \\x00\\x00\\x00\\xc8 > two-hundred.bin
 $ ./sum-nbo thousand.bin five-hundred.bin two-hundred.bin
 1000(0x000003e8) + 500(0x000001f4) + 200(0x000000c8) = 1700(0x000006a4)
 ```
-<!-- Uploding https://github.com/gowonisgood/gilgil_assignment/blob/main/assginment1/KakaoTalk_20250715_165812689.mp4 -->
+
+[동영상 보기](https://raw.githubusercontent.com/gowonisgood/gilgil_assignment/main/assginment1/KakaoTalk_20250715_165812689.mp4)
