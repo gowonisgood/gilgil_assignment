@@ -1,15 +1,15 @@
 # gilgil_assignment1
 이경문 멘토님 과제1
 
-# 과제
+## 과제
 32 bit 숫자가 파일에 4바이트의 크기로 저장되어 있다(network byte order). 1개 이상의 파일로부터 숫자를 읽어 들여 그 합을 출력하는 프로그램을 작성하라.
 
-# 실행
+## 실행
 
 syntax : sum-nbo <file1> [<file2>...]
 sample : sum-nbo a.bin b.bin c.bin
 
-# example
+## example
 $ echo -n -e \\x00\\x00\\x03\\xe8 > thousand.bin
 $ echo -n -e \\x00\\x00\\x01\\xf4 > five-hundred.bin
 $ echo -n -e \\x00\\x00\\x00\\xc8 > two-hundred.bin
