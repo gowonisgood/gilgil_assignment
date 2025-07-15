@@ -20,4 +20,5 @@ $ ./sum-nbo thousand.bin five-hundred.bin two-hundred.bin
 ```
 
 [동영상 보기](https://github.com/gowonisgood/gilgil_assignment/blob/main/assginment1/assginment1.mp4)
+
 링크 : https://github.com/gowonisgood/gilgil_assignment/blob/main/assginment1/assginment1.mp4
