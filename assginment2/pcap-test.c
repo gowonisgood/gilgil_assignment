@@ -16,8 +16,8 @@ struct libnet_ethernet_hdr
 /* GO : ip header */
 struct libnet_ipv4_hdr
 {
-	u_int8_t version_ihl;      /* GO : version and ihl */
-
+	u_int8_t ip_hl:4,      /* header length */
+	ip_v:4;         /* version */
 
 	u_int8_t ip_tos;       /* type of service */
 
@@ -130,7 +130,6 @@ int main(int argc, char* argv[]) {
 		if(ether_type == ETHER_IP) printf("IP\n"); // GO: debug
 
 		/* GO : ethernet header end */
-
 		/* GO : ip header*/
 		packet += 14;
 		struct libnet_ipv4_hdr *ipv4_hdr = (struct libnet_ipv4_hdr*)packet;
@@ -139,10 +138,6 @@ int main(int argc, char* argv[]) {
 		//printf("\n");
 		/* GO : debug */
 
-
-
-
-
 		u_int8_t protocol = ipv4_hdr->ip_p;
 		if(protocol!=TCP) {
 			printf("NOT TCP\n"); //GO: debug
@@ -150,12 +145,14 @@ int main(int argc, char* argv[]) {
 		}
 		if(protocol==TCP) printf("TCP\n"); //GO: debug
 
-		u_char tcp_length = 4*(ipv4_hdr->ip_len);
+		u_char ip_header_length = 4*(ipv4_hdr->ip_hl);
+		//printf("ip header length:%d\n",ip_header_length); //GO: debug
+		u_char ip_length = 4*(ipv4_hdr->ip_len);
 
 		/* GO : ip header end*/
 
 		/* GO : tcp header */
-		packet += tcp_length + 20;
+		packet += ip_length + ip_header_length;
 		struct libnet_tcp_hdr *tcp_hdr = (struct libnet_tcp_hdr*)packet;
 		u_int16_t src_port = ntohs(tcp_hdr->th_sport);
 		u_int16_t dst_port = ntohs(tcp_hdr->th_dport);
@@ -179,25 +176,24 @@ int main(int argc, char* argv[]) {
 		}
 		printf("\n");
 
-
-
-
-
-
-
+		u_char tcp_length = 4*(tcp_hdr->th_off);
+		printf("tcp_length: %d\n",tcp_length); //GO:debug
 
 		/* GO : http header end */
 
-
-
-
+		/* GO : data */
+		packet += tcp_length -12;
+		for(int i=0;i<20;i++){
+			printf("%0x|",*packet);
+			packet+=1;
+		}
+		printf("\n");
+		/* GO : data end */
 
 
 
 
 	}
-
-
 
 	pcap_close(pcap);
 }
