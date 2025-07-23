@@ -92,15 +92,10 @@ int main(int argc, char* argv[]) {
 			printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
 			break;
 		}
+		printf("%u bytes captured\n", header->caplen);
 
 		/* GO : ethernet header */
 		struct libnet_ethernet_hdr *ethernet_hdr = (struct libnet_ethernet_hdr*)packet;
-        /* GO : ip header*/
-		packet += 14;
-		struct libnet_ipv4_hdr *ipv4_hdr = (struct libnet_ipv4_hdr*)packet;
-
-		u_int8_t protocol = ipv4_hdr->ip_p;
-		if(protocol!=TCP) continue;
 
 		for(int i=0;i<6;i++){
 			if(i!=5) {
@@ -120,6 +115,8 @@ int main(int argc, char* argv[]) {
 		}
 
 
+
+
 		u_int16_t ether_type = ntohs(ethernet_hdr->ether_type);
 
 
@@ -127,11 +124,19 @@ int main(int argc, char* argv[]) {
 
 
 		/* GO : ethernet header end */
+		/* GO : ip header*/
+		packet += 14;
+		struct libnet_ipv4_hdr *ipv4_hdr = (struct libnet_ipv4_hdr*)packet;
+
+
+		u_int8_t protocol = ipv4_hdr->ip_p;
+		if(protocol!=TCP) continue;
 
 
 
 		u_char ip_header_length = (ipv4_hdr->ip_hl)<<2;
 
+		//u_int16_t ip_length = (ipv4_hdr->ip_len)<<2;
 
 
 		/* GO : ip header end*/
@@ -159,6 +164,7 @@ int main(int argc, char* argv[]) {
 			printf("%d:%d, ",ipv4_hdr->ip_dst[i],dst_port);
 		}
 
+
 		u_int16_t tcp_length = 4*(tcp_hdr->th_off);
 
 		/* GO : http header end */
@@ -166,7 +172,7 @@ int main(int argc, char* argv[]) {
 		/* GO : data */
 		packet += tcp_length;
 		u_int16_t data_length = header->caplen - 14 - ip_header_length - tcp_length;
-		//printf("data_length: %d\n",data_length);
+		printf("data_length: %d\n",data_length);
 
 		if(data_length==0) {
 			printf("-\n");
@@ -182,10 +188,11 @@ int main(int argc, char* argv[]) {
 			}
 			printf("\n");
 		}
-
-		printf("============================\n");
+		printf("==========================");
 
 		/* GO : data end */
+
+
 
 
 	}
