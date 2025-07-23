@@ -145,14 +145,15 @@ int main(int argc, char* argv[]) {
 		}
 		if(protocol==TCP) printf("TCP\n"); //GO: debug
 
-		u_char ip_header_length = 4*(ipv4_hdr->ip_hl);
+		u_char ip_header_length = (ipv4_hdr->ip_hl)<<2;
 		//printf("ip header length:%d\n",ip_header_length); //GO: debug
-		u_char ip_length = 4*(ipv4_hdr->ip_len);
+		u_int16_t ip_length = (ipv4_hdr->ip_len)<<2;
+		printf("ip_length : %u\n",ip_length); // GO : debug
 
 		/* GO : ip header end*/
 
 		/* GO : tcp header */
-		packet += ip_length + ip_header_length;
+		packet += ip_header_length;
 		struct libnet_tcp_hdr *tcp_hdr = (struct libnet_tcp_hdr*)packet;
 		u_int16_t src_port = ntohs(tcp_hdr->th_sport);
 		u_int16_t dst_port = ntohs(tcp_hdr->th_dport);
@@ -176,18 +177,31 @@ int main(int argc, char* argv[]) {
 		}
 		printf("\n");
 
-		u_char tcp_length = 4*(tcp_hdr->th_off);
-		printf("tcp_length: %d\n",tcp_length); //GO:debug
+		u_int16_t tcp_length = 4*(tcp_hdr->th_off);
+		printf("tcp_length: %u\n",tcp_length); //GO:debug
 
 		/* GO : http header end */
 
 		/* GO : data */
-		packet += tcp_length -12;
-		for(int i=0;i<20;i++){
-			printf("%0x|",*packet);
-			packet+=1;
+		packet += tcp_length;
+		u_int16_t data_length = header->caplen - 14 - ip_header_length - tcp_length;
+		printf("data_length: %d\n",data_length);
+
+		if(data_length==0) {
+			printf("-\n");
+		}else{
+			for(int i=0;i<20;i++){
+				if(data_length-1==i){
+					printf("%0x",*packet);
+					break;
+				}
+				else if(i==19) printf("%0x",*packet);
+				else printf("%0x|",*packet);
+				packet+=1;
+			}
+			printf("\n");
 		}
-		printf("\n");
+
 		/* GO : data end */
 
 
