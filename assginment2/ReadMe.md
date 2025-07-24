@@ -30,3 +30,6 @@ sudo ./pcap-test eth0
 ```
 
 ![OSI_and_TCP](OSI_and_TCP.png)
+
+ [과제 동영상](https://github.com/gowonisgood/gilgil_assignment/blob/main/assginment2/assginment2.mp4)
+
