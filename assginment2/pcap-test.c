@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
 
 		/* GO : data */
 		packet += tcp_length;
-		printf("ipv4_hdr->ip_len : %u\n", ntohs(ipv4_hdr->ip_len));
+		//printf("ipv4_hdr->ip_len : %u\n", ntohs(ipv4_hdr->ip_len));
 		u_int16_t data_length = ntohs(ipv4_hdr->ip_len) - ip_header_length - tcp_length;
 		//printf("data_length: %d\n",data_length);
 
