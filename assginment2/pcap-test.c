@@ -165,7 +165,8 @@ int main(int argc, char* argv[]) {
 
 		/* GO : data */
 		packet += tcp_length;
-		u_int16_t data_length = header->caplen - 14 - ip_header_length - tcp_length;
+		printf("ipv4_hdr->ip_len : %u\n", ntohs(ipv4_hdr->ip_len));
+		u_int16_t data_length = ntohs(ipv4_hdr->ip_len) - ip_header_length - tcp_length;
 		//printf("data_length: %d\n",data_length);
 
 		if(data_length==0) {
@@ -173,11 +174,11 @@ int main(int argc, char* argv[]) {
 		}else{
 			for(int i=0;i<20;i++){
 				if(data_length-1==i){
-					printf("%0x",*packet);
+					printf("%02x",*packet);
 					break;
 				}
 				else if(i==19) printf("%0x",*packet);
-				else printf("%0x|",*packet);
+				else printf("%02x|",*packet);
 				packet+=1;
 			}
 			printf("\n");
