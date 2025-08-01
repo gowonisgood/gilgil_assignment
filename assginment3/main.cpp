@@ -28,7 +28,24 @@ void usage() {
     printf("sample: send-arp wlan0 192.168.10.2 192.168.10.1\n");
 }
 
-/* GO */
+uint32_t c_to_u32_ip(const char* t_ip){
+    uint32_t rt_ip=0;
+    uint8_t  tmp=0;
+
+
+    for(int i=0;i<strlen(t_ip);i++){
+        if(t_ip[i]=='.'){
+            rt_ip|=tmp;
+            rt_ip  = rt_ip<<8;
+            tmp=0;
+        }
+        else{
+            tmp*=10;
+            tmp+=t_ip[i]-'0';
+        }
+    }
+    return rt_ip;
+}
 
 bool get_s_mac(const string& interface, const u_char* packet, const char* t_ip, uint8_t s_mac[6]){
 
@@ -38,41 +55,31 @@ bool get_s_mac(const string& interface, const u_char* packet, const char* t_ip, 
     cpacket += sizeof(EthHdr);
     ArpHdr *arpHdr = (ArpHdr*) cpacket;
 
+    //1. is Arp?
     if(ethHdr->type()!= ethHdr->Arp) return false; // GO: not Arp(0x0806)
-    uint32_t ct_ip = arpHdr->tip(); // GO: capture t_ip
 
-    uint32_t rt_ip=0;
-    uint8_t  tmp=0;
-    for(int i=0;i<strlen(t_ip);i++){
-        if(t_ip[i]=='.'){
-            rt_ip|=tmp;
-            rt_ip<<4;
-            tmp=0;
-        }
-        else{
-            tmp|=t_ip[i]-'0';
+    //2. is dmac == broadcast ?
+    //if(!etrHdr->tmac().isbroadcast()) return false;
 
-        }
-        printf("%c",t_ip[i]);
-    }
+    //3. is target ip == captured ip ?
+    uint32_t ct_ip = arpHdr->tip(); // GO: captured t_ip
+    uint32_t rt_ip  = c_to_u32_ip(t_ip); //GO: real target ip (uint32_t)
+
+    //if(rt_ip!=ct_ip) return false; //GO : not ask about target ip
 
 
     /* debug */
+    printf("rt_ip:0x%x\n",rt_ip);
     printf("t_ip: %s\n", t_ip);
-    printf("target ip: 0x%x\n",ct_ip);
+    printf("ct_ip: 0x%x\n",ct_ip);
+    /* debug */
 
+    //4. parse smac (victim mac)
+    s_mac = (arpHdr->smac()).mac_; //TODO first: check is it correct s_mac , seperate two fucntion
 
     return true;
 
-
-
-
 }
-
-
-
-
-
 
 bool get_me_mac(const string& interface, uint8_t mac[6]) {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -97,14 +104,27 @@ bool get_me_mac(const string& interface, uint8_t mac[6]) {
     return true;
 }
 
-void make_packet(const string& interface){
+// EthArpPacket make_packet(const string& interface, Mac me_mac, const char* t_ip, Mac v_mac, const char* v_ip){
+//     EthArpPacket packet;
 
+//     packet.eth_.dmac_ = v_mac; // you - target
+//     packet.eth_.smac_ = me_mac; // me
+//     packet.eth_.type_ = htons(EthHdr::Arp);
 
+//     packet.arp_.hrd_ = htons(ArpHdr::ETHER);
+//     packet.arp_.pro_ = htons(EthHdr::Ip4);
+//     packet.arp_.hln_ = Mac::Size;
+//     packet.arp_.pln_ = Ip::Size;
 
-}
+//     packet.arp_.op_ = htons(ArpHdr::Reply);
+//     packet.arp_.smac_ = me_mac; //me - malicious
+//     packet.arp_.sip_ = t_ip;     //target ip
+//     packet.arp_.tmac_ = v_mac; //you - victim mac
+//     packet.arp_.tip_ = v_ip;  //you - victim ip
 
-/* GO */
+//     return packet;
 
+// }
 
 int main(int argc, char* argv[]) {
 
@@ -134,15 +154,21 @@ int main(int argc, char* argv[]) {
                     printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
                     break;
                 }
-            printf("%u bytes captured\n", header->caplen);
+            printf("%u bytes captured\n", header->caplen); // GO : debug
 
         /* GO : packet capture end */
 
         uint8_t s_mac[6];
-        uint8_t me_mac[6];
+        uint8_t me_mac_array[6]; //Todo: change type (uint8_t -> Mac)
+        Mac me_mac;
 
         if (!get_s_mac(dev,packet,argv[re*2+3],s_mac)) continue; //not arp or not broadcast or not target ip
-        if (!get_me_mac(dev, me_mac)) cerr << "fail to get me_mac\n";
+        if (!get_me_mac(dev, me_mac_array)) cerr << "fail to get me_mac\n";
+        me_mac = Mac(me_mac_array);
+
+
+        //EthArpPacket attack_packet;
+        //make_packet(dev, me_mac, argv[re*2+3] ,*s_mac, argv[re*2+2]); //TODO : check argument
 
 
 
@@ -150,28 +176,7 @@ int main(int argc, char* argv[]) {
 
 
 
-        EthArpPacket attack_packet;
-        //make_packet(dev);
-
-
-
-
-
-        // packet.eth_.dmac_ = Mac("90:de:80:ce:25:35"); // you - target
-        // //packet.eth_.smac_ = Mac(&me_mac); // me
-        // packet.eth_.type_ = htons(EthHdr::Arp);
-
-        // packet.arp_.hrd_ = htons(ArpHdr::ETHER);
-        // packet.arp_.pro_ = htons(EthHdr::Ip4);
-        // packet.arp_.hln_ = Mac::Size;
-        // packet.arp_.pln_ = Ip::Size;
-        // //packet.arp_.op_ = htons(ArpHdr::Request);
-        // packet.arp_.op_ = htons(ArpHdr::Reply);
-        // packet.arp_.smac_ = Mac("90:de:80:9d:47:3f"); //me - malicious
-        // packet.arp_.sip_ = htonl(Ip("10.3.3.1"));     //gateway - victim ip
-        // packet.arp_.tmac_ = Mac("90:de:80:ce:25:35"); //you - target mac
-        // packet.arp_.tip_ = htonl(Ip("172.20.10.4"));  //you - target ip
-
+        // //send the attack_packet
         // int res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
         // if (res != 0) {
         //     fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(pcap));
