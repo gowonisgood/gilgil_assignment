@@ -378,6 +378,7 @@ u_char* m_relay_packet(const u_char* packet, Mac me_mac, Mac t_mac, uint32_t& ou
     eth_hdr->dmac_ = t_mac;
     eth_hdr->smac_ = me_mac;
 
+    //debug
     Mac ssmac = eth_hdr->smac();
     Mac ddmac = eth_hdr->dmac();
 
@@ -541,7 +542,7 @@ int main(int argc, char* argv[]) {
             }
 
             spoof_flows.push_back({s_ip, t_ip, s_mac, me_mac, true, t_mac});
-            spoof_flows.push_back({t_ip, s_ip, t_mac, me_mac, true, s_mac}); //TODO : maybe under gogo
+            spoof_flows.push_back({t_ip, s_ip, t_mac, me_mac, true, s_mac});
 
             //pcap_close(pcap);
             break;
@@ -598,7 +599,7 @@ int main(int argc, char* argv[]) {
         for (int i=0; i<spoof_flows.size(); i++)
         {
 
-             if(!spoof_flows[i].haveToRelay||!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
+             if(!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
 
              uint32_t relay_len = 0;
              u_char* relayP = m_relay_packet(packet,me_mac,spoof_flows[i].real_t_mac,relay_len);
@@ -607,8 +608,6 @@ int main(int argc, char* argv[]) {
                  fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res4, pcap_geterr(pcap));
              }
              free(relayP);
-
-
 
         }
 
