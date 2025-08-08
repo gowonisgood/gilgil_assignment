@@ -493,7 +493,8 @@ int main(int argc, char* argv[]) {
         {
             if(!isArp_and_Rq(packet)) continue;
             if(!isRecoverCase(packet, spoof_flows[i].s_ip)) continue;
-            m_a_packet();
+            m_a_packet(me_mac, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].s_ip);
+            printf("re infect packet send\n"); //debug
 
         }
 
