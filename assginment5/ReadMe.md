@@ -29,4 +29,4 @@ sample : echo-server 1234 -e -b
 ```
 
 ## 과제 동영상
-
+https://www.youtube.com/watch?v=iZfME3Xympo
