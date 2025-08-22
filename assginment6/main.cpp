@@ -121,7 +121,7 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	return id;
 }
 
-
+#define TCP 0x06
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
           struct nfq_data *nfa, void *data)
 {
@@ -134,6 +134,12 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     int ret = nfq_get_payload(nfa, &packet);
 
     IpHdr *ipHdr = (IpHdr*) packet;
+
+    u_int8_t protocol = ipHdr->ip_p;
+    if(protocol!=TCP) {
+        printf("Not Tcp\n");
+        return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+    }
     u_int8_t ipHdrlen = (ipHdr->ip_hl)<<2;
 
     packet += ipHdrlen;
@@ -145,25 +151,34 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     if(data_length<0) return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 
+    std::string packetS(reinterpret_cast<char*>(packet), data_length);
+    std::string bHostS(reinterpret_cast<char*>(packet), data_length);
+
+    if(packetS.find("HTTP") != std::string::npos) {
+        printf("http found\n");
+    }else{
+        return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+    }
+
     printf("[DEBUG]: ");
-    for(int i=0;i<40;i++){
+    unsigned char *httpData = packet;
+    for(int i=0;i<data_length;i++){
         if(data_length-1==i){
-            printf("%c",*packet);
+            printf("%c",*httpData);
             break;
         }
-        else printf("%c",*packet);
-        packet+=1;
+        else printf("%c",*httpData);
+        httpData+=1;
     }
     printf("\n");
 
-    std::string packetS(reinterpret_cast<char*>(packet));
-    std::string bHostS(reinterpret_cast<char*>(packet));
 
 
-    if(packetS.find(bHostS) != std::string::npos){
+    /*if(packetS.find(bHostS) != std::string::npos){
         printf("Block case\n");
-        return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-    }
+        //return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    }*/
+
 	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
 
