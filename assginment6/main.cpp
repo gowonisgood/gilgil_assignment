@@ -9,6 +9,7 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include "ip.h"
 #include <string>
+#include <string.h>
 #include <algorithm>
 
 struct IpHdr
@@ -106,17 +107,11 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 		printf("physoutdev=%u ", ifi);
 
 	ret = nfq_get_payload(tb, &data);
-	/* GO */
-    //if(ret>=0){
-    //	dump(data, ret);
-    //}
-	//data : cast ip
+
 	if (ret >= 0)
 		printf("payload_len=%d\n", ret);
 
 	fputc('\n', stdout);
-
-
 
 	return id;
 }
@@ -127,7 +122,6 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
 	u_int32_t id = print_pkt(nfa);
     char *bHost = (char *)data;
-    printf("bHost: %s\n",bHost);
     printf("entering callback\n");
 
     unsigned char *packet;
@@ -137,7 +131,6 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
     u_int8_t protocol = ipHdr->ip_p;
     if(protocol!=TCP) {
-        printf("Not Tcp\n");
         return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
     u_int8_t ipHdrlen = (ipHdr->ip_hl)<<2;
@@ -149,35 +142,45 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     packet += tcplen;
     u_int16_t data_length = ntohs(ipHdr->ip_len) - ipHdrlen - tcplen;
 
-    if(data_length<0) return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
-
     std::string packetS(reinterpret_cast<char*>(packet), data_length);
-    std::string bHostS(reinterpret_cast<char*>(packet), data_length);
+    std::string bHostS(bHost);
 
-    if(packetS.find("HTTP") != std::string::npos) {
-        printf("http found\n");
-    }else{
+    if(!(packetS.find("HTTP") != std::string::npos)) return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+
+    std::size_t hostPos = packetS.find("Host:");
+    std::string hostValue;
+    if(packetS.find("Host:") != std::string::npos)
+    {
+
+        std::size_t lineEnd = packetS.find("\r\n", hostPos);
+        if (lineEnd != std::string::npos)
+        {
+            std::string hostLine = packetS.substr(hostPos, lineEnd - hostPos);
+
+            std::size_t colonPos = hostLine.find(":");
+            if (colonPos != std::string::npos)
+            {
+                hostValue = hostLine.substr(colonPos + 1);
+                // 앞뒤 공백 제거
+                hostValue.erase(0, hostValue.find_first_not_of(" \t"));
+                hostValue.erase(hostValue.find_last_not_of(" \t") + 1);
+                printf("Host value: %s\n", hostValue.c_str());
+            }
+        }
+
+    }else
+    {
         return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
 
-    printf("[DEBUG]: ");
-    unsigned char *httpData = packet;
-    for(int i=0;i<data_length;i++){
-        if(data_length-1==i){
-            printf("%c",*httpData);
-            break;
-        }
-        else printf("%c",*httpData);
-        httpData+=1;
+
+    /* 추출한거랑 입력값이랑 비교 */
+    if(strcmp(hostValue.c_str(), bHost) == 0){
+        printf("deny case bHost found\n");
+        return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    }else{
+        return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
     }
-    printf("\n");
-
-
-
-    /*if(packetS.find(bHostS) != std::string::npos){
-        printf("Block case\n");
-        //return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-    }*/
 
 	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
